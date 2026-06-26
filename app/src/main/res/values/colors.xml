@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="Primary">#01B6FF</color>
+    <color name="Secondary">#e8d5b5</color>
+    <color name="Tertiary">#D1E0ED</color>
+    <color name="Neutral">#2d3436</color>
+    <color name="icons">#00D9FF</color>
+    <color name="black">#020202</color>
+    <!--    <color name="teal_700">#FF018786</color>-->
+<!--    <color name="black">#FF000000</color>-->
+<!--    <color name="white">#FFFFFFFF</color>-->
+</resources>

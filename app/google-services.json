@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "339033350134",
+    "firebase_url": "https://sasa-9bf45-default-rtdb.firebaseio.com",
+    "project_id": "sasa-9bf45",
+    "storage_bucket": "sasa-9bf45.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:339033350134:android:d116925edf9b5d6820f1d7",
+        "android_client_info": {
+          "package_name": "com.learn.behindsee2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVw4nm6-4hs53_MlmPOfUwvtJuTf_-3jY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
