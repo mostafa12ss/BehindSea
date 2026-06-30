@@ -129,15 +129,15 @@ fun PropertyDetailsContent(
             ) {
                 Card(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .height(280.dp),
+                        .fillMaxWidth()
+                        .height(350.dp),
                     shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
                 ) {
                     AsyncImage(
                         model = property.imageUrl,
                         contentDescription = "صورة العقار",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.FillWidth
                     )
                 }
 

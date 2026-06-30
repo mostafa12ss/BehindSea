@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.google.firebase.auth.FirebaseAuth
 import com.learn.behindsee2.HomeScreen
 import com.learn.behindsee2.LoginScreen
 import com.learn.behindsee2.ui.theme.*
@@ -25,11 +26,23 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.Splash.route) {
             SplashScreen(
                 onNavigateToWelcome = {
-                    navController.navigate(Screen.Welcome.route) {
-                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    // التحقق من Firebase قبل اتخاذ القرار
+                    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+
+                    if (currentUser != null) {
+                        // 1️⃣ إذا كان هناك حساب مسجل بالفعل: اذهب للرئيسية مباشرة وامسح الـ Splash
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
+                    } else {
+                        // 2️⃣ إذا لم يسجل دخوله بعد: اذهب لشاشة الـ Welcome
+                        navController.navigate(Screen.Welcome.route) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
                     }
                 },
                 onNavigateToHome = {
+                    // هذا الـ Callback يمكنك تركه فارغاً أو حذفه لأننا قمنا بدمج الفحص بالأعلى
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
@@ -119,7 +132,16 @@ fun NavGraph(navController: NavHostController) {
                     }
                 },
                 onNavigateToMessages = { navController.navigate(Screen.MessagesList.route) },
-                onNavigateToAddProperty = { navController.navigate(Screen.Over.route) }
+                onNavigateToAddProperty = { navController.navigate(Screen.Over.route) },
+                        onLogoutClick = {
+                    // 1. تسجيل الخروج من الفايربيس
+                    FirebaseAuth.getInstance().signOut()
+
+                    // 2. التوجيه لشاشة تسجيل الدخول وتنظيف الـ BackStack
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) // يمسح كل الشاشات السابقة من الذاكرة تماماً
+                    }
+                }
             )
         }
 

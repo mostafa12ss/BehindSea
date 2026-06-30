@@ -1,16 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    //google fire base
-//    id("com.android.application")
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.learn.behindsee2"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.learn.behindsee2"
@@ -58,23 +54,23 @@ dependencies {
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
 
-    // ❌ تم حذف سطر libs.firebase.storage.ktx من هنا لأنه مسبب المشكلة
-
-    // 2️⃣ مكتبات الفايربيس الصحيحة المربوطة بالـ BoM تلقائياً
+    // 2️⃣ مكتبات الفايربيس (بدون Storage)
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage") // 👈 ده السطر الصح والنظيف للستوريدج!
 
-    // 3️⃣ المكتبات الخارجية (الصور والموقع والـ ViewModel)
-    implementation("io.coil-kt:coil-compose:2.6.0") // لعرض الصور في الكومبوز
+    // 3️⃣ Cloudinary
+    implementation("com.cloudinary:cloudinary-android:3.1.2")
+
+    // 4️⃣ المكتبات الخارجية (الصور والموقع والـ ViewModel)
+    implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.github.bumptech.glide:glide:4.15.1")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
-    implementation("com.google.android.gms:play-services-location:21.2.0") // للموقع الجغرافي
+    implementation("com.google.android.gms:play-services-location:21.2.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
-    implementation(libs.androidx.navigation.compose) // للـ ViewModel
+    implementation(libs.androidx.navigation.compose)
 
-    // 4️⃣ ملفات التست (الاختبارات)
+    // 5️⃣ ملفات التست
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -6,20 +6,19 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.cloudinary.android.MediaManager
+import com.cloudinary.android.callback.ErrorInfo
+import com.cloudinary.android.callback.UploadCallback
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.userProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
-import com.google.firebase.storage.FirebaseStorage
-import java.util.UUID
 
 class ProfileViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
     private val firestore = FirebaseFirestore.getInstance()
-    private val storage = FirebaseStorage.getInstance()
 
-    // 🟢 Fix: Listener management to prevent memory leaks
     private var userListener: ListenerRegistration? = null
     private var propertiesListener: ListenerRegistration? = null
     private var incomingBookingsListener: ListenerRegistration? = null
@@ -187,14 +186,19 @@ class ProfileViewModel : ViewModel() {
         val uid = currentUser?.uid ?: return
 
         isUploadingImage = true
-        val imageRef = storage.reference.child("profile_images/$uid/${UUID.randomUUID()}.jpg")
-        imageRef.putFile(imageUri)
-            .addOnSuccessListener {
-                imageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
-                    val imageUrlString = downloadUrl.toString()
-                    val data = mapOf("profileImageUrl" to imageUrlString)
+        statusMessage = "جاري رفع الصورة..."
+
+        MediaManager.get().upload(imageUri)
+            .option("unsigned", true)
+            .option("upload_preset", "behindsee2")
+            .callback(object : UploadCallback {
+                override fun onStart(requestId: String) {}
+                override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
+                override fun onSuccess(requestId: String, resultData: Map<*, *>) {
+                    val imageUrlString = resultData["secure_url"] as String
+
                     firestore.collection("users").document(uid)
-                        .set(data, SetOptions.merge())
+                        .update("profileImageUrl", imageUrlString)
                         .addOnSuccessListener {
                             val profileUpdates = userProfileChangeRequest {
                                 photoUri = Uri.parse(imageUrlString)
@@ -210,19 +214,18 @@ class ProfileViewModel : ViewModel() {
                                     }
                                 }
                         }
-                        .addOnFailureListener {
+                        .addOnFailureListener { e ->
                             isUploadingImage = false
-                            statusMessage = "فشل حفظ رابط الصورة"
+                            statusMessage = "فشل حفظ الرابط في Firestore: ${e.message}"
                         }
-                }.addOnFailureListener {
-                    isUploadingImage = false
-                    statusMessage = "فشل استخراج رابط الصورة"
                 }
-            }
-            .addOnFailureListener {
-                isUploadingImage = false
-                statusMessage = "فشل رفع الصورة إلى السيرفر"
-            }
+                override fun onError(requestId: String, error: ErrorInfo) {
+                    isUploadingImage = false
+                    statusMessage = "خطأ Cloudinary: ${error.description}"
+                    android.util.Log.e("CloudinaryError", "Description: ${error.description}, Code: ${error.code}")
+                }
+                override fun onReschedule(requestId: String, error: ErrorInfo) {}
+            }).dispatch()
     }
 
     override fun onCleared() {

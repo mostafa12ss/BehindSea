@@ -17,7 +17,8 @@ class ChatViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     private var messagesListener: ListenerRegistration? = null
     private var typingListener: ListenerRegistration? = null
-    
+
+    val timestamp: Timestamp? = null
     val messagesList = mutableStateListOf<Message>()
     var isOtherUserTyping by mutableStateOf(false)
 
@@ -72,30 +73,33 @@ class ChatViewModel : ViewModel() {
         val cleanText = text.trim()
         if (cleanText.isEmpty()) return
 
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val currentTimeString = sdf.format(Date())
-
         val messageData = Message(
             senderId = senderId,
             messageText = cleanText,
-            timestamp = Timestamp.now(),
-            timeString = currentTimeString
+            timestamp = Timestamp.now(), // 👈 تأكد أن الاسم هنا "timestamp" بالضبط
+            timeString = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         )
 
-        db.collection("chat_rooms")
-            .document(roomId)
-            .collection("messages")
-            .add(messageData)
+        // 1. إضافة الرسالة للمجموعة الفرعية
+        db.collection("chat_rooms").document(roomId).collection("messages").add(messageData)
 
-        val roomData = mapOf(
-            "roomId" to roomId,
+        // 2. تحديث الرسالة الأخيرة في الغرفة بدون تغيير الـ participants
+        val roomUpdate = mapOf(
             "senderId" to senderId,
             "receiverId" to receiverId,
             "participants" to listOf(senderId, receiverId), // Ensure participants are set
             "lastMessage" to cleanText,
             "timestamp" to Timestamp.now()
         )
-        db.collection("chat_rooms").document(roomId).set(roomData, com.google.firebase.firestore.SetOptions.merge())
+
+        db.collection("chat_rooms").document(roomId).update(roomUpdate)
+            .addOnFailureListener {
+                // لو الغرفة مش موجودة (أول رسالة)، ننشئها ببيانات كاملة
+                val initialRoom = roomUpdate.toMutableMap()
+                initialRoom["roomId"] = roomId
+                initialRoom["participants"] = listOf(senderId, receiverId)
+                db.collection("chat_rooms").document(roomId).set(initialRoom)
+            }
     }
 
     override fun onCleared() {

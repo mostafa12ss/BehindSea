@@ -39,6 +39,7 @@ import com.learn.behindsee2.navigation.BottomNavigationBar
 import com.learn.behindsee2.navigation.Screen
 import com.learn.behindsee2.ui.theme.Behindsee2Theme
 import com.learn.behindsee2.ui.theme.PropertyData
+import com.learn.behindsee2.R
 
 // 1️⃣ الـ Data Classes
 data class Category(
@@ -53,7 +54,7 @@ val categoriesList = listOf(
     Category(name = "منزل", iconRes = R.drawable.home)
 )
 
-// 2️⃣ الـ ViewModel لإدارة البيانات
+// 2️⃣ الـ ViewModel لإدارة البيانات (تم تحديث الفلترة هنا)
 class HomeViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
@@ -68,6 +69,10 @@ class HomeViewModel : ViewModel() {
 
     var selectedCategory by mutableStateOf<String?>("الكل")
     var searchQuery by mutableStateOf("")
+
+    // 🎯 متغيرات الفلترة الجديدة للشريط السفلي
+    var selectedLocation by mutableStateOf("")
+    var maxPrice by mutableStateOf<Double?>(null)
 
     var userRole by mutableStateOf("buyer")
     var userProfileUrl by mutableStateOf<String?>("")
@@ -100,13 +105,22 @@ class HomeViewModel : ViewModel() {
             }
     }
 
+    // 🎯 تحديث دالة الفلترة لتشمل الموقع والسعر بشكل حقيقي
     fun applyFilter() {
         val result = allProperties.filter { property ->
             val matchesCategory = selectedCategory == "الكل" || property.categoryName == selectedCategory
             val matchesSearch = searchQuery.isEmpty() ||
                     property.address.contains(searchQuery, ignoreCase = true) ||
                     property.name.contains(searchQuery, ignoreCase = true)
-            matchesCategory && matchesSearch
+
+            // فلترة الموقع (إذا اختار المستخدم موقعاً معنياً)
+            val matchesLocation = selectedLocation.isEmpty() ||
+                    property.address.contains(selectedLocation, ignoreCase = true)
+
+            // فلترة السعر (إذا حدد المستخدم حداً أقصى للسعر)
+            val matchesPrice = maxPrice == null || property.price <= maxPrice!!
+
+            matchesCategory && matchesSearch && matchesLocation && matchesPrice
         }
         filteredProperties.clear()
         filteredProperties.addAll(result)
@@ -127,16 +141,19 @@ fun HomeScreenContent(
     filteredProperties: List<PropertyData> = emptyList(),
     searchQuery: String = "",
     selectedCategory: String? = "الكل",
+    selectedLocation: String = "",
+    maxPrice: Double? = null,
     userRole: String = "buyer",
     userProfileUrl: String? = null,
     onQueryChange: (String) -> Unit = {},
+    onLocationFilterClick: () -> Unit = {},
+    onPriceFilterClick: () -> Unit = {},
     onCategorySelected: (Category) -> Unit = {},
     onNavigateToAddProperty: () -> Unit = {},
     onNavigateToPropertyDetails: (String) -> Unit = {},
     onNavigateToMessages: () -> Unit = {},
     onProfileClick: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val fullCategoriesList = remember(categories) {
         listOf(Category("الكل", null)) + categories
     }
@@ -149,7 +166,7 @@ fun HomeScreenContent(
                     navigationIcon = {
                         IconButton(onClick = { }) {
                             Icon(
-                                painter = painterResource(R.drawable.outline_menu_24),
+                                painter = painterResource(android.R.drawable.ic_menu_sort_by_size),
                                 tint = Color(0xFF004D61),
                                 contentDescription = "Menu",
                                 modifier = Modifier.size(24.dp)
@@ -163,7 +180,7 @@ fun HomeScreenContent(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = stringResource(id = R.string.app_title),
+                                text = "خلف البحر",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF004D61)
@@ -172,10 +189,7 @@ fun HomeScreenContent(
                                 AsyncImage(
                                     model = userProfileUrl,
                                     contentDescription = "Profile Picture",
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onProfileClick() },
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).clickable { onProfileClick() },
                                     contentScale = ContentScale.Crop,
                                     placeholder = ColorPainter(Color.LightGray)
                                 )
@@ -184,10 +198,7 @@ fun HomeScreenContent(
                                     imageVector = Icons.Default.AccountCircle,
                                     contentDescription = "Default Profile",
                                     tint = Color(0xFF004D61),
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onProfileClick() }
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).clickable { onProfileClick() }
                                 )
                             }
                         }
@@ -213,8 +224,19 @@ fun HomeScreenContent(
                     .background(Color(0xFFF8FBFC))
                     .verticalScroll(rememberScrollState())
             ) {
-                SearchBar(query = searchQuery, onQueryChange = onQueryChange, modifier = Modifier.padding(16.dp))
+                // تمرير بارامترات الفلترة للشريط هنا
+                SearchBar(
+                    query = searchQuery,
+                    onQueryChange = onQueryChange,
+                    selectedLocation = selectedLocation,
+                    maxPrice = maxPrice,
+                    onLocationFilterClick = onLocationFilterClick,
+                    onPriceFilterClick = onPriceFilterClick,
+                    modifier = Modifier.padding(16.dp)
+                )
+
                 CategoryFilter(categories = fullCategoriesList, selectedCategoryName = selectedCategory, onCategorySelected = onCategorySelected)
+
                 PropertyListing(
                     properties = filteredProperties,
                     onPropertyClick = { property -> onNavigateToPropertyDetails(property.id) },
@@ -225,7 +247,6 @@ fun HomeScreenContent(
     }
 }
 
-// 5️⃣ الشاشة الذكية المتصلة بالـ ViewModel
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
@@ -235,16 +256,32 @@ fun HomeScreen(
     onNavigateToMessages: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+
     HomeScreenContent(
         modifier = modifier,
         categories = categoriesList,
         filteredProperties = homeViewModel.filteredProperties,
         searchQuery = homeViewModel.searchQuery,
         selectedCategory = homeViewModel.selectedCategory,
+        selectedLocation = homeViewModel.selectedLocation,
+        maxPrice = homeViewModel.maxPrice,
         userRole = homeViewModel.userRole,
         userProfileUrl = homeViewModel.userProfileUrl,
         onQueryChange = {
             homeViewModel.searchQuery = it
+            homeViewModel.applyFilter()
+        },
+        onLocationFilterClick = {
+            // 💡 لتفعيلها بشكل سريع: التبديل كمثال بين الساحل الشمالي أو إعادتها فارغة
+            // يمكنك مستقبلاً استبدالها بـ AlertDialog بسيط يحتوي على قائمة مدن
+            homeViewModel.selectedLocation = if (homeViewModel.selectedLocation.isEmpty()) "الساحل" else ""
+            homeViewModel.applyFilter()
+            Toast.makeText(context, if (homeViewModel.selectedLocation.isEmpty()) "تم إلغاء فلتر الموقع" else "تصفية: الساحل الشمالي", Toast.LENGTH_SHORT).show()
+        },
+        onPriceFilterClick = {
+            // 💡 تصفية العقارات التي سعرها أقل من 2000 كمثال، أو إلغاء الفلتر عند الضغط مجدداً
+            homeViewModel.maxPrice = if (homeViewModel.maxPrice == null) 2000.0 else null
             homeViewModel.applyFilter()
         },
         onCategorySelected = { category ->
@@ -258,9 +295,16 @@ fun HomeScreen(
     )
 }
 
-// 6️⃣ شريط البحث
 @Composable
-fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    selectedLocation: String,
+    maxPrice: Double?,
+    onLocationFilterClick: () -> Unit,
+    onPriceFilterClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -272,145 +316,80 @@ fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: Modifier
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(text = stringResource(id = R.string.search_placeholder), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, fontSize = 14.sp) },
-                trailingIcon = { Icon(painter = painterResource(R.drawable.baseline_search_24), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                placeholder = { Text(text = "ابحث عن واجهتك القادمة...", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, fontSize = 14.sp) },
+                trailingIcon = { Icon(painter = painterResource(android.R.drawable.ic_menu_search), contentDescription = null, modifier = Modifier.size(20.dp)) },
                 shape = RoundedCornerShape(20.dp),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFFF0F0F0), focusedBorderColor = Color(0xFFF0F0F0), unfocusedContainerColor = Color(0xFFF9F9F9), focusedContainerColor = Color(0xFFF9F9F9)),
                 singleLine = true
             )
             Spacer(modifier = Modifier.height(12.dp))
+
+            // 🎯 الأزرار أصبحت تفاعلية الآن وتغير شكلها ولونها عند التفعيل
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                CustomFilterChip(text = stringResource(id = R.string.filter_date), icon = painterResource(R.drawable.outline_calendar_today_24), modifier = Modifier.weight(1f))
-                CustomFilterChip(text = stringResource(id = R.string.filter_location), icon = painterResource(R.drawable.outline_location_searching_24), modifier = Modifier.weight(1f))
-                CustomFilterChip(text = stringResource(id = R.string.filter_price), icon = painterResource(R.drawable.baseline_price_change_24), containerColor = Color(0xFFF2E7D5), modifier = Modifier.weight(1f))
+
+                // 1. زر التاريخ (يمكنك تركه كديكور حالياً أو ربطه لاحقاً)
+                CustomFilterChip(
+                    text = "التاريخ",
+                    icon = painterResource(android.R.drawable.ic_menu_my_calendar),
+                    isSelected = false,
+                    onClick = {},
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 2. زر الموقع التفاعلي
+                CustomFilterChip(
+                    text = if (selectedLocation.isEmpty()) "الموقع" else selectedLocation,
+                    icon = painterResource(android.R.drawable.ic_menu_compass),
+                    isSelected = selectedLocation.isNotEmpty(),
+                    onClick = onLocationFilterClick,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 3. زر السعر التفاعلي (يأخذ اللون البيج المميز من صورتك عند عدم التفعيل، ويتغير عند الضغط)
+                CustomFilterChip(
+                    text = if (maxPrice == null) "السعر" else "≤ ${maxPrice.toInt()}",
+                    icon = painterResource(android.R.drawable.ic_menu_slideshow),
+                    containerColor = if (maxPrice != null) Color(0xFF004D61).copy(alpha = 0.1f) else Color(0xFFF2E7D5),
+                    isSelected = maxPrice != null,
+                    onClick = onPriceFilterClick,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
 @Composable
-fun CustomFilterChip(text: String, icon: Painter, containerColor: Color = Color.White, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.height(36.dp), shape = RoundedCornerShape(18.dp), color = containerColor, border = BorderStroke(1.dp, Color(0xFFEEEEEE))) {
+fun CustomFilterChip(
+    text: String,
+    icon: Painter,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    containerColor: Color = Color.White,
+    modifier: Modifier = Modifier
+) {
+    // يتغير لون الحدود الخلفية عند التفعيل لإعطاء إيحاء تفاعلي ممتاز
+    val currentBackendColor = if (isSelected && containerColor == Color.White) Color(0xFF004D61).copy(alpha = 0.08f) else containerColor
+    val currentBorderColor = if (isSelected) Color(0xFF004D61) else Color(0xFFEEEEEE)
+
+    Surface(
+        modifier = modifier
+            .height(36.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = currentBackendColor,
+        border = BorderStroke(1.dp, currentBorderColor)
+    ) {
         Row(modifier = Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Icon(painter = icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Gray)
+            Icon(painter = icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = if (isSelected) Color(0xFF004D61) else Color.Gray)
             Spacer(modifier = Modifier.width(4.dp))
-            Text(text = text, fontSize = 11.sp, color = Color.DarkGray, maxLines = 1)
+            Text(text = text, fontSize = 11.sp, color = if (isSelected) Color(0xFF004D61) else Color.DarkGray, maxLines = 1, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
         }
     }
 }
 
-// 7️⃣ قائمة الأقسام
-@Composable
-fun CategoryFilter(categories: List<Category>, selectedCategoryName: String?, onCategorySelected: (Category) -> Unit, modifier: Modifier = Modifier) {
-    LazyRow(
-        modifier = modifier.padding(vertical = 8.dp).fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        itemsIndexed(categories) { _, category ->
-            val isSelected = category.name == selectedCategoryName
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onCategorySelected(category) }) {
-                Icon(
-                    painter = if (category.iconRes != null) painterResource(id = category.iconRes) else painterResource(id = R.drawable.outline_all_inclusive_24),
-                    contentDescription = category.name,
-                    modifier = Modifier.size(24.dp),
-                    tint = if (isSelected) Color(0xFF004D61) else Color.Gray
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = category.name, fontSize = 12.sp, color = if (isSelected) Color(0xFF004D61) else Color.Gray, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                if (isSelected) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.width(20.dp).height(2.dp).background(Color(0xFF004D61)))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PropertyListing(properties: List<PropertyData>, onPropertyClick: (PropertyData) -> Unit, modifier: Modifier = Modifier) {
-    if (properties.isEmpty()) {
-        Box(modifier = modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-            Text(text = "لا توجد عروض مطابقة للبحث حالياً", color = Color.Gray, fontSize = 14.sp)
-        }
-    } else {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            properties.forEach { property -> PropertyCard(property = property, onClick = { onPropertyClick(property) }) }
-        }
-    }
-}
-
-// 8️⃣ كارت عرض العقارات
-@Composable
-fun PropertyCard(property: PropertyData, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column {
-            Box(modifier = Modifier.height(200.dp).fillMaxWidth()) {
-                AsyncImage(
-                    model = property.imageUrl,
-                    contentDescription = property.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    placeholder = ColorPainter(Color.LightGray),
-                    error = ColorPainter(Color.LightGray)
-                )
-                Surface(
-                    modifier = Modifier.padding(12.dp).align(Alignment.TopStart),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.9f)
-                ) {
-                    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "4.9", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(imageVector = Icons.Default.Star, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFFB400))
-                    }
-                }
-                IconButton(onClick = { }, modifier = Modifier.padding(8.dp).align(Alignment.TopEnd).background(Color.Black.copy(alpha = 0.2f), CircleShape)) {
-                    Icon(painter = painterResource(id = R.drawable.outline_heart_plus_24), contentDescription = "Favorite", modifier = Modifier.size(20.dp), tint = Color.White)
-                }
-            }
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = property.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = property.price.toInt().toString(), fontSize = 18.sp, color = Color(0xFF2A7DA0), fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = stringResource(id = R.string.currency), fontSize = 12.sp, color = Color(0xFF2A7DA0))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(text = "/ ${stringResource(id = R.string.night)}", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = property.address, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, fontSize = 12.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
-                    val dummyTags = listOf("عقار مميز", "إطلالة بحرية")
-                    dummyTags.forEachIndexed { index, tag ->
-                        Surface(modifier = Modifier.padding(end = 8.dp), shape = RoundedCornerShape(8.dp), color = if (index == 0) Color(0xFFBCE6F5) else Color(0xFFF2E7D5)) {
-                            Text(text = tag, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = 11.sp, color = if (index == 0) Color(0xFF004D61) else Color(0xFF8B5E3C))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// 9️⃣ الـ Preview
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun HomeScreenPreview() {
-    Behindsee2Theme {
-        HomeScreenContent(
-            categories = categoriesList,
-            filteredProperties = emptyList(),
-            selectedCategory = "الكل"
-        )
-    }
-}
+// بقية مكونات الـ UI (CategoryFilter, PropertyListing, PropertyCard) تبقى بدون أي تعديل إضافي وتعمل كالمعتاد...
+@Composable fun CategoryFilter(categories: List<Category>, selectedCategoryName: String?, onCategorySelected: (Category) -> Unit, modifier: Modifier = Modifier) { LazyRow(modifier = modifier.padding(vertical = 8.dp).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) { itemsIndexed(categories) { _, category -> val isSelected = category.name == selectedCategoryName; Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onCategorySelected(category) }) { Icon(painter = if (category.iconRes != null) painterResource(id = category.iconRes) else painterResource(id = R.drawable.outline_all_inclusive_24), contentDescription = category.name, modifier = Modifier.size(24.dp), tint = if (isSelected) Color(0xFF004D61) else Color.Gray); Spacer(modifier = Modifier.height(4.dp)); Text(text = category.name, fontSize = 12.sp, color = if (isSelected) Color(0xFF004D61) else Color.Gray, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal); if (isSelected) { Spacer(modifier = Modifier.height(4.dp)); Box(modifier = Modifier.width(20.dp).height(2.dp).background(Color(0xFF004D61))) } } } } }
+@Composable fun PropertyListing(properties: List<PropertyData>, onPropertyClick: (PropertyData) -> Unit, modifier: Modifier = Modifier) { if (properties.isEmpty()) { Box(modifier = modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { Text(text = "لا توجد عروض مطابقة للبحث حالياً", color = Color.Gray, fontSize = 14.sp) } } else { Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) { properties.forEach { property -> PropertyCard(property = property, onClick = { onPropertyClick(property) }) } } } }
+@Composable fun PropertyCard(property: PropertyData, onClick: () -> Unit) { Card(modifier = Modifier.fillMaxWidth().clickable { onClick() }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) { Column { Box(modifier = Modifier.height(200.dp).fillMaxWidth()) { AsyncImage(model = property.imageUrl, contentDescription = property.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, placeholder = ColorPainter(Color.LightGray), error = ColorPainter(Color.LightGray)); Surface(modifier = Modifier.padding(12.dp).align(Alignment.TopStart), shape = RoundedCornerShape(12.dp), color = Color.White.copy(alpha = 0.9f)) { Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { Text(text = "4.9", fontSize = 12.sp, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.width(4.dp)); Icon(imageVector = Icons.Default.Star, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFFB400)) } }; IconButton(onClick = { }, modifier = Modifier.padding(8.dp).align(Alignment.TopEnd).background(Color.Black.copy(alpha = 0.2f), CircleShape)) { Icon(painter = painterResource(id = R.drawable.outline_heart_plus_24), contentDescription = "Favorite", modifier = Modifier.size(20.dp), tint = Color.White) } }; Column(modifier = Modifier.padding(16.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(text = property.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black); Row(verticalAlignment = Alignment.CenterVertically) { Text(text = property.price.toInt().toString(), fontSize = 18.sp, color = Color(0xFF2A7DA0), fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.width(4.dp)); Text(text = stringResource(id = R.string.currency), fontSize = 12.sp, color = Color(0xFF2A7DA0)); Spacer(modifier = Modifier.width(2.dp)); Text(text = "/ ${stringResource(id = R.string.night)}", fontSize = 11.sp, color = Color.Gray) } }; Spacer(modifier = Modifier.height(4.dp)); Text(text = property.address, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, fontSize = 12.sp, color = Color.Gray); Spacer(modifier = Modifier.height(12.dp)); Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) { val dummyTags = listOf("عقار مميز", "إطلالة بحرية"); dummyTags.forEachIndexed { index, tag -> Surface(modifier = Modifier.padding(end = 8.dp), shape = RoundedCornerShape(8.dp), color = if (index == 0) Color(0xFFBCE6F5) else Color(0xFFF2E7D5)) { Text(text = tag, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = 11.sp, color = if (index == 0) Color(0xFF004D61) else Color(0xFF8B5E3C)) } } } } } } }
+@Preview(showBackground = true) @Composable fun HomeScreenPreview() { Behindsee2Theme { HomeScreenContent(categories = categoriesList, filteredProperties = listOf(PropertyData(id = "1", name = "فيلا فاخرة على البحر", address = "جدة، حي أبحر", price = 1500.0, categoryName = "فيلا"), PropertyData(id = "2", name = "شاليه هادئ", address = "الخبر، شاطئ نصف القمر", price = 800.0, categoryName = "شاليه")), searchQuery = "", selectedCategory = "الكل", userRole = "buyer") } }

@@ -5,20 +5,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.cloudinary.android.MediaManager
+import com.cloudinary.android.callback.ErrorInfo
+import com.cloudinary.android.callback.UploadCallback
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import java.util.UUID
 
 class PaymentViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
     private val firestore = FirebaseFirestore.getInstance()
-    private val storage = FirebaseStorage.getInstance()
 
     var isSubmitting by mutableStateOf(false)
     var statusMessage by mutableStateOf("")
-    
+
     var ownerPaymentInfo by mutableStateOf<UserProfile?>(null)
     var isLoadingOwner by mutableStateOf(false)
 
@@ -68,12 +69,18 @@ class PaymentViewModel : ViewModel() {
                 val tenantName = currentUser.displayName ?: "مستأجر"
 
                 val requestId = UUID.randomUUID().toString()
-                val storageRef = storage.reference.child("payment_screenshots/$currentUserId/$requestId.jpg")
 
-                storageRef.putFile(imageUri)
-                    .addOnSuccessListener {
-                        storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
-                            val screenshotUrlString = downloadUrl.toString()
+                // 🚀 الرفع باستخدام Cloudinary بدلاً من Firebase Storage
+                MediaManager.get().upload(imageUri)
+                    .option("unsigned", true)
+                    .option("upload_preset", "behindsee2")
+                    .option("public_id", "payment_screenshots/$currentUserId/$requestId")
+                    .callback(object : UploadCallback {
+                        override fun onStart(requestId: String) {}
+                        override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
+                        override fun onSuccess(requestId: String, resultData: Map<*, *>) {
+                            // الحصول على رابط الصورة الآمن
+                            val screenshotUrlString = resultData["secure_url"] as String
 
                             val paymentRequest = PaymentRequest(
                                 requestId = requestId,
@@ -91,7 +98,7 @@ class PaymentViewModel : ViewModel() {
                                 timestamp = Timestamp.now()
                             )
 
-                            // 🟢 FIX: Collection name matched to ProfileViewModel
+                            // حفظ الطلب في Firestore
                             firestore.collection("payments")
                                 .document(requestId)
                                 .set(paymentRequest)
@@ -105,17 +112,16 @@ class PaymentViewModel : ViewModel() {
                                     statusMessage = "فشل حفظ بيانات الدفع"
                                     onComplete(false)
                                 }
-                        }.addOnFailureListener {
+                        }
+
+                        override fun onError(requestId: String, error: ErrorInfo) {
                             isSubmitting = false
-                            statusMessage = "فشل الحصول على رابط الصورة"
+                            statusMessage = "فشل رفع صورة الإيصال إلى Cloudinary"
                             onComplete(false)
                         }
-                    }
-                    .addOnFailureListener {
-                        isSubmitting = false
-                        statusMessage = "فشل رفع صورة الإيصال"
-                        onComplete(false)
-                    }
+
+                        override fun onReschedule(requestId: String, error: ErrorInfo) {}
+                    }).dispatch()
             }
             .addOnFailureListener {
                 isSubmitting = false

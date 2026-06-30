@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import coil.compose.rememberAsyncImagePainter
 import com.learn.behindsee2.navigation.BottomNavigationBar
 import com.learn.behindsee2.navigation.Screen
 import java.text.SimpleDateFormat
@@ -42,7 +42,8 @@ fun ProfileScreen(
     onBackClick: () -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     onNavigateToMessages: () -> Unit = {},
-    onNavigateToAddProperty: () -> Unit = {}
+    onNavigateToAddProperty: () -> Unit = {},
+    onLogoutClick: () -> Unit = {} // الزرار الجديد
 ) {
     ProfileScreenContent(
         userProfile = profileViewModel.userProfile,
@@ -63,7 +64,8 @@ fun ProfileScreen(
         onUpdatePaymentInfo = { vc, ip -> profileViewModel.updatePaymentInfo(vc, ip) },
         onDeleteProperty = { profileViewModel.deleteProperty(it) },
         onUpdateBookingStatus = { id, status -> profileViewModel.updateBookingStatus(id, status) },
-        onStatusMessageShown = { profileViewModel.statusMessage = "" }
+        onStatusMessageShown = { profileViewModel.statusMessage = "" }, // التمرير هنا صريح بالاسم
+        onLogoutClick = onLogoutClick
     )
 }
 
@@ -88,7 +90,8 @@ fun ProfileScreenContent(
     onUpdatePaymentInfo: (String, String) -> Unit,
     onDeleteProperty: (String) -> Unit,
     onUpdateBookingStatus: (String, String) -> Unit,
-    onStatusMessageShown: () -> Unit
+    onStatusMessageShown: () -> Unit,
+    onLogoutClick: () -> Unit
 ) {
     var nameInput by remember { mutableStateOf("") }
     var vodafoneCash by remember { mutableStateOf("") }
@@ -98,15 +101,17 @@ fun ProfileScreenContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val isNameTooShort = nameInput.trim().isNotEmpty() && nameInput.trim().length < 3
-    val isDataChanged = nameInput.trim().isNotEmpty() &&
+    val isNameChanged = nameInput.trim().isNotEmpty() &&
             nameInput.trim() != userProfile?.name &&
             nameInput.trim().length >= 3
 
+    // 🛠️ تم التعديل هنا: جلب البيانات الأساسية من السيرفر فقط لو الحقول فارغة بيدك
+    // هذا يمنع ارتداد النصوص أثناء الرفع أو الحفظ
     LaunchedEffect(userProfile) {
         if (userProfile != null) {
             if (nameInput.isEmpty()) nameInput = userProfile.name
-            vodafoneCash = userProfile.vodafoneCash
-            instaPay = userProfile.instaPay
+            if (vodafoneCash.isEmpty()) vodafoneCash = userProfile.vodafoneCash ?: ""
+            if (instaPay.isEmpty()) instaPay = userProfile.instaPay ?: ""
         }
     }
 
@@ -130,6 +135,15 @@ fun ProfileScreenContent(
                     navigationIcon = {
                         IconButton(onClick = onBackClick) {
                             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = Color(0xFF004D61))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onLogoutClick) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ExitToApp, // أيقونة الخروج المتوافقة مع اتجاه اللغة
+                                contentDescription = "تسجيل الخروج",
+                                tint = Color(0xFFD32F2F) // اللون الأحمر ليدل على أكشن الخروج
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -167,8 +181,14 @@ fun ProfileScreenContent(
                                 contentAlignment = Alignment.BottomEnd,
                                 modifier = Modifier.size(120.dp).clip(CircleShape).clickable { if (!isUploadingImage) photoPickerLauncher.launch("image/*") }
                             ) {
-                                if (userProfile?.profileImageUrl?.isNotBlank() == true) {
-                                    Image(painter = rememberAsyncImagePainter(userProfile.profileImageUrl), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                if (!userProfile?.profileImageUrl.isNullOrBlank()) {
+                                    // 🛠️ تم التعديل لرفع الكفاءة والمزامنة الفورية للصورة الشخصية
+                                    AsyncImage(
+                                        model = userProfile?.profileImageUrl,
+                                        contentDescription = "الصوره الشخصيه",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
                                 } else {
                                     Icon(imageVector = Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = Color.LightGray)
                                 }
@@ -191,7 +211,8 @@ fun ProfileScreenContent(
                             singleLine = true
                         )
 
-                        if (isDataChanged) {
+                        // يظهر الزرار لو الاسم تم تعديله بيدك فعلياً
+                        if (isNameChanged) {
                             Button(onClick = { onSaveName(nameInput) }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF004D61))) {
                                 if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                                 else Text("حفظ تغيير الاسم", color = Color.White)
@@ -212,8 +233,16 @@ fun ProfileScreenContent(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     OutlinedTextField(value = instaPay, onValueChange = { instaPay = it }, label = { Text("عنوان InstaPay") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), singleLine = true)
                                     Spacer(modifier = Modifier.height(12.dp))
-                                    Button(onClick = { onUpdatePaymentInfo(vodafoneCash, instaPay) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A7DA0))) {
-                                        Text("تحديث بيانات الدفع", color = Color.White)
+
+                                    // 🛠️ تم التعديل: إظهار التحميل داخل زر تحديث المحفظة أيضاً لراحة المستخدم
+                                    Button(
+                                        onClick = { onUpdatePaymentInfo(vodafoneCash, instaPay) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A7DA0))
+                                    ) {
+                                        if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                                        else Text("تحديث بيانات الدفع", color = Color.White)
                                     }
                                 }
                             }
@@ -222,7 +251,7 @@ fun ProfileScreenContent(
                         // Seller Dashboard: My Properties & Incoming Requests
                         if (userProfile?.role == "seller") {
                             Text("لوحة تحكم البائع", modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF004D61))
-                            
+
                             // My Properties
                             Text("عقاراتي المرفوعة", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             if (myProperties.isEmpty()) {
@@ -283,7 +312,6 @@ fun ProfileScreenContent(
         )
     }
 }
-
 @Composable
 fun PropertyItem(property: PropertyData, onDelete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -410,7 +438,7 @@ fun ProfileScreenContentPreview() {
             onUpdatePaymentInfo = { _, _ -> },
             onDeleteProperty = {},
             onUpdateBookingStatus = { _, _ -> },
-            onStatusMessageShown = {}
-        )
+            onStatusMessageShown = {},
+        ) {}
     }
 }
