@@ -39,7 +39,7 @@ import com.learn.behindsee2.navigation.BottomNavigationBar
 import com.learn.behindsee2.navigation.Screen
 import com.learn.behindsee2.ui.theme.Behindsee2Theme
 import com.learn.behindsee2.ui.theme.PropertyData
-import com.learn.behindsee2.R
+
 
 // 1️⃣ الـ Data Classes
 data class Category(

@@ -1,7 +1,6 @@
 package com.learn.behindsee2.ui.theme
 
 import android.app.DatePickerDialog
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
